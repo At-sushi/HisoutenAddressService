@@ -8,12 +8,11 @@ import java.util.Collection;
 import java.util.GregorianCalendar;
 import java.util.Iterator;
 import java.util.LinkedList;
+import org.jgrapht.Graph;
+import org.jgrapht.alg.interfaces.MatchingAlgorithm;
+import org.jgrapht.alg.matching.EdmondsMaximumCardinalityMatching;
+import org.jgrapht.graph.SimpleGraph;
 
-/**
- * 
- * @author bngper
- * 
- */
 public class MatchingManager {
 
 	private static final int SKIP_MINUTES = 5;
@@ -158,6 +157,7 @@ public class MatchingManager {
 			player.refreshHistory();
 		}
 
+        Graph<TencoUser, MatchingResult> graph = new SimpleGraph<TencoUser, MatchingResult>(MatchingResult.class);
 		Collection<TencoUser> clientOnlyUsers = new LinkedList<TencoUser>();
 		Collection<TencoUser> hostableUsers = new LinkedList<TencoUser>();
 		for (TencoUser player : _players) {
@@ -168,18 +168,17 @@ public class MatchingManager {
 			} else {
 				clientOnlyUsers.add(player);
 			}
+            graph.addVertex(player);
 		}
 
 		// まずはクラ専の人から
 		for (TencoUser client : clientOnlyUsers) {
 
-			if (isMatched(client.Id)) {
-				continue;
-			}
+			assert !isMatched(client.Id);
 
 			for (TencoUser host : hostableUsers) {
 
-				if (isMatched(host.Id)) {
+				if (getMatchingResult(host.Id) != null) {
 					continue;
 				}
 
@@ -192,8 +191,7 @@ public class MatchingManager {
 				}
 
 				MatchingResult result = new MatchingResult(host.copy(), client.copy());
-				_matchingResults.add(result);
-				break;
+                graph.addEdge(host, client, result);
 			}
 		}
 
@@ -204,7 +202,7 @@ public class MatchingManager {
 				continue;
 			}
 
-			for (TencoUser client : _players) {
+			for (TencoUser client : hostableUsers) {
 
 				if (client.isUnregistered()) {
 					continue;
@@ -228,10 +226,16 @@ public class MatchingManager {
 				}
 
 				MatchingResult result = new MatchingResult(host.copy(), client.copy());
-				_matchingResults.add(result);
-				break;
+                graph.addEdge(host, client, result);
 			}
 		}
+
+        // マッチング処理（Edmondの花分解）
+        EdmondsMaximumCardinalityMatching<TencoUser, MatchingResult> matching = new EdmondsMaximumCardinalityMatching<TencoUser, MatchingResult>(graph);
+        final MatchingAlgorithm.Matching<TencoUser, MatchingResult> results = matching.getMatching();
+
+        for (MatchingResult result : results)
+            _matchingResults.add(result);
 	}
 
 	private synchronized void refreshPlayers() {
